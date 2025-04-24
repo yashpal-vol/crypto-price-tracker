@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crypto Price Tracker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/redux@4.2.0/dist/redux.min.js"></script>
+  <script src="https://unpkg.com/react-redux@8.0.5/dist/react-redux.min.js"></script>
+</head>
+<body className="bg-gray-50">
+  <div id="root"></div>
+  <script type="text/babel">
+    const UPDATE_PRICE = 'UPDATE_PRICE';
+    const updatePrice = (payload) => {
+      return {
+        type: UPDATE_PRICE,
+        payload
+      };
+    };
+    const loadState = () => {
+      localStorage.removeItem('cryptoState');
+      const defaultState = {
+        assets: [
+          { id: 1, name: "Bitcoin", symbol: "BTC", binanceSymbol: "btcusdt", price: 0, change1h: 0, change24h: 0, change7d: 0, marketCap: 0, volume24h: 0, supply: 19750000 },
+          { id: 2, name: "Ethereum", symbol: "ETH", binanceSymbol: "ethusdt", price: 0, change1h: 0, change24h: 0, change7d: 0, marketCap: 0, volume24h: 0, supply: 120200000 },
+          { id: 3, name: "Tether", symbol: "USDT", binanceSymbol: "usdcusdt", price: 1, change1h: 0, change24h: 0, change7d: 0, marketCap: 0, volume24h: 0, supply: 0 },
+          { id: 4, name: "XRP", symbol: "XRP", binanceSymbol: "xrpusdt", price: 0, change1h: 0, change24h: 0, change7d: 0, marketCap: 0, volume24h: 0, supply: 56000000000 },
+          { id: 5, name: "Solana", symbol: "SOL", binanceSymbol: "solusdt", price: 0, change1h: 0, change24h: 0, change7d: 0, marketCap: 0, volume24h: 0, supply: 466000000 },
+          { id: 6, name: "Binance Coin", symbol: "BNB", binanceSymbol: "bnbusdt", price: 0, change1h: 0, change24h: 0, change7d: 0, marketCap: 0, volume24h: 0, supply: 145000000 },
+          { id: 7, name: "Cardano", symbol: "ADA", binanceSymbol: "adausdt", price: 0, change1h: 0, change24h: 0, change7d: 0, marketCap: 0, volume24h: 0, supply: 35000000000 },
+          { id: 8, name: "Avalanche", symbol: "AVAX", binanceSymbol: "avaxusdt", price: 0, change1h: 0, change24h: 0, change7d: 0, marketCap: 0, volume24h: 0, supply: 400000000 },
+          { id: 9, name: "Dogecoin", symbol: "DOGE", binanceSymbol: "dogeusdt", price: 0, change1h: 0, change24h: 0, change7d: 0, marketCap: 0, volume24h: 0, supply: 145000000000 },
+          { id: 10, name: "Polkadot", symbol: "DOT", binanceSymbol: "dotusdt", price: 0, change1h: 0, change24h: 0, change7d: 0, marketCap: 0, volume24h: 0, supply: 1200000000 },
+        ]
+      };
+      return defaultState;
+    };
+    const initialState = loadState();
+    const cryptoReducer = (state = initialState, action) => {
+      switch (action.type) {
+        case UPDATE_PRICE:
+          const { symbol, price, change1h, change24h, change7d, volume24h, marketCap, supply } = action.payload;
+          const newAssets = state.assets.map(asset => {
+            if (asset.binanceSymbol === symbol.toLowerCase()) {
+              return {
+                ...asset,
+                price: price || asset.price,
+                change1h: change1h || asset.change1h,
+                change24h: change24h || asset.change24h,
+                change7d: change7d || asset.change7d,
+                volume24h: volume24h || asset.volume24h,
+                marketCap: marketCap !== undefined ? marketCap : asset.marketCap,
+                supply: supply !== undefined ? supply : asset.supply
+              };
+            }
+            return asset;
+          });
+          return { ...state, assets: newAssets };
+        default:
+          return state;
+      }
+    };
+    const store = Redux.createStore(cryptoReducer);
+    store.subscribe(() => {
+      try {
+        const serializedState = JSON.stringify(store.getState());
+        localStorage.setItem('cryptoState', serializedState);
+      } catch (err) {}
+    });
+    const { useEffect, useState, useMemo } = React;
+    const { Provider, useDispatch, useSelector } = ReactRedux;
+    function Sparkline({ change7d }) {
+      const points = Array.from({ length: 7 }, (_, i) => {
+        const variation = (Math.random() - 0.5) * 10;
+        return 50 + (i * (change7d || 0) / 7) + variation;
+      });
+      const maxY = Math.max(...points);
+      const minY = Math.min(...points);
+      const normalizedPoints = points.map(y => {
+        if (maxY === minY) return 50;
+        return 100 - ((y - minY) / (maxY - minY)) * 80 - 10;
+      });
+      const polylinePoints = normalizedPoints
+        .map((y, i) => `${(i / (points.length - 1)) * 120},${y}`)
+        .join(' ');
+      const strokeColor = (change7d || 0) >= 0 ? 'green' : 'red';
+      return (
+        <svg width="120" height="50" viewBox="0 0 120 100">
+          <polyline
+            fill="none"
+            stroke={strokeColor}
+            strokeWidth="2"
+            points={polylinePoints}
+          />
+        </svg>
+      );
+    }
+    function CryptoTable() {
+      const assets = useSelector(state => state.assets);
+      const dispatch = useDispatch();
+      const [sortByGain, setSortByGain] = useState(false);
+      const sortedAssets = useMemo(() => {
+        return [...assets].sort((a, b) => 
+          sortByGain ? (b.change24h || 0) - (a.change24h || 0) : a.id - b.id
+        );
+      }, [assets, sortByGain]);
+      useEffect(() => {
+        const fetchMarketData = async () => {
+          try {
+            const response = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin,ethereum,tether,ripple,solana,binancecoin,cardano,avalanche-2,dogecoin,polkadot');
+            const data = await response.json();
+            data.forEach(coin => {
+              const asset = assets.find(a => a.symbol.toLowerCase() === coin.symbol.toLowerCase());
+              if (asset) {
+                dispatch(updatePrice({
+                  symbol: asset.binanceSymbol,
+                  price: coin.current_price,
+                  change1h: coin.price_change_percentage_1h_in_currency,
+                  change24h: coin.price_change_percentage_24h_in_currency,
+                  change7d: coin.price_change_percentage_7d_in_currency,
+                  volume24h: coin.total_volume,
+                  marketCap: coin.market_cap,
+                  supply: coin.circulating_supply
+                }));
+              }
+            });
+          } catch (err) {}
+        };
+        fetchMarketData();
+      }, [dispatch]);
+      useEffect(() => {
+        const ws = new WebSocket('wss://stream.binance.com:9443/ws/!ticker@arr');
+        ws.onopen = () => {};
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            data.forEach(ticker => {
+              const symbol = ticker.s.toLowerCase();
+              const price = parseFloat(ticker.c);
+              const change1h = parseFloat(ticker.P);
+              const change24h = parseFloat(ticker.p);
+              const change7d = parseFloat(ticker.w);
+              const volume24h = parseFloat(ticker.v) * price;
+              dispatch(updatePrice({
+                symbol,
+                price,
+                change1h,
+                change24h,
+                change7d,
+                volume24h
+              }));
+            });
+          } catch (err) {}
+        };
+        ws.onerror = (error) => {};
+        ws.onclose = () => {};
+        return () => {
+          ws.close();
+        };
+      }, [dispatch]);
+      return (
+        <div className="container mx-auto p-6 max-w-7xl">
+          <h1 className="text-4xl font-extrabold text-gray-900 mb-8 text-center">Crypto Price Tracker</h1>
+          <button 
+            onClick={() => setSortByGain(!sortByGain)}
+            className="mb-6 bg-indigo-600 text-white px-6 py-2 rounded-full hover:bg-indigo-700 transition duration-300 ease-in-out shadow-md"
+          >
+            {sortByGain ? 'Sort by Rank' : 'Sort by 24h Gain'}
+          </button>
+          <div className="overflow-x-auto rounded-lg shadow-xl">
+            <table className="min-w-full bg-white rounded-lg">
+              <thead className="bg-indigo-100 text-indigo-900">
+                <tr>
+                  <th className="p-4 text-left text-sm font-bold uppercase tracking-wider">SL. NO</th>
+                  <th className="p-4 text-left text-sm font-bold uppercase tracking-wider">Name</th>
+                  <th className="p-4 text-left text-sm font-bold uppercase tracking-wider">Symbol</th>
+                  <th className="p-4 text-left text-sm font-bold uppercase tracking-wider">Price</th>
+                  <th className="p-4 text-left text-sm font-bold uppercase tracking-wider">1h %</th>
+                  <th className="p-4 text-left text-sm font-bold uppercase tracking-wider">24h %</th>
+                  <th className="p-4 text-left text-sm font-bold uppercase tracking-wider">7d %</th>
+                  <th className="p-4 text-left text-sm font-bold uppercase tracking-wider">Market Cap</th>
+                  <th className="p-4 text-left text-sm font-bold uppercase tracking-wider">24h Volume</th>
+                  <th className="p-4 text-left text-sm font-bold uppercase tracking-wider">Circulating Supply</th>
+                  <th className="p-4 text-left text-sm font-bold uppercase tracking-wider">7D Chart</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedAssets.map((asset, index) => (
+                  <tr key={asset.id} className="border-b hover:bg-indigo-50 transition duration-200">
+                    <td className="p-4 text-gray-800 font-medium">{index + 1}</td>
+                    <td className="p-4 text-gray-800 font-medium">{asset.name}</td>
+                    <td className="p-4 text-gray-600">{asset.symbol}</td>
+                    <td className="p-4 text-gray-800 font-medium">${asset.price ? asset.price.toFixed(2) : 'N/A'}</td>
+                    <td className={`p-4 font-medium ${asset.change1h >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {asset.change1h ? asset.change1h.toFixed(2) : 'N/A'}%
+                    </td>
+                    <td className={`p-4 font-medium ${asset.change24h >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {asset.change24h ? asset.change24h.toFixed(2) : 'N/A'}%
+                    </td>
+                    <td className={`p-4 font-medium ${asset.change7d >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {asset.change7d ? asset.change7d.toFixed(2) : 'N/A'}%
+                    </td>
+                    <td className="p-4 text-gray-800 font-medium">${asset.marketCap ? (asset.marketCap / 1e9).toFixed(2) : 'N/A'}B</td>
+                    <td className="p-4 text-gray-800 font-medium">${asset.volume24h ? (asset.volume24h / 1e9).toFixed(2) : 'N/A'}B</td>
+                    <td className="p-4 text-gray-800 font-medium">{asset.supply ? (asset.supply / 1e6).toFixed(2) : 'N/A'}M</td>
+                    <td className="p-4">
+                      <Sparkline change7d={asset.change7d} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(
+      <Provider store={store}>
+        <CryptoTable />
+      </Provider>
+    );
+  </script>
+</body>
+</html>
